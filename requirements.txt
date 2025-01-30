@@ -1,0 +1,10 @@
+fastapi
+pydantic
+uvicorn
+gunicorn
+aiologger[aiofiles]
+requests
+openai
+google-api-python-client
+# serpapi (если удобно использовать)
+# beautifulsoup4 (для парсинга страниц и т.д.)
