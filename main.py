@@ -147,8 +147,8 @@ async def run_thin_cse(question: str) -> Tuple[int, str, List[str]]:
         return -1, "Thin CSE: no relevant facts", sources
 
     final_ans = finalize_answer_sync(facts, question)
-    chosen = extract_choice_number(final_ans)
-    return chosen, final_ans, sources
+    reasoning = f"{final_ans} (Ответ сгенерирован с использованием GPT-4)"
+    return extract_choice_number(final_ans), reasoning, sources
 
 # ============== Шаг 2: Tavily =================
 async def run_tavily(question: str) -> Tuple[int, str, List[str]]:
@@ -219,8 +219,11 @@ async def run_fallback_gpt(question: str) -> Tuple[Optional[int], str, List[str]
     if num_variants > 0:
         chosen = extract_choice_number(text)
         if 1 <= chosen <= num_variants:
-            return chosen, text, []
+            reasoning = f"{text} (Ответ сгенерирован с использованием GPT-4)"
+            return chosen, reasoning, []
         else:
-            return None, text, []  # GPT не выбрал вариант -> answer = None
+            reasoning = f"{text} (Ответ сгенерирован с использованием GPT-4)"
+            return None, reasoning, []  # GPT не выбрал вариант -> answer = None
     else:
-        return None, text, []  # Нет вариантов -> answer = None
+        reasoning = f"{text} (Ответ сгенерирован с использованием GPT-4)"
+        return None, reasoning, []  # Нет вариантов -> answer = None
