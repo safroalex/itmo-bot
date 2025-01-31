@@ -8,5 +8,6 @@ openai
 google-api-python-client
 python-dotenv
 beautifulsoup4
+
 # serpapi (если удобно использовать)
 # beautifulsoup4 (для парсинга страниц и т.д.)
