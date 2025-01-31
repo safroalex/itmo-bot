@@ -135,24 +135,27 @@ async def predict(body: PredictionRequest):
 
 
 def simplify_query_with_openai(original_query: str) -> str:
-    """
-    Функция-«агент», который принимает сложный текст запроса
-    и пытается упростить/переформулировать его так, чтобы Google мог его нормально обработать.
-    """
     logger.info(f"Using secondary OpenAI key to simplify query: {original_query}")
 
     client = openai.OpenAI(api_key=OPENAI_API_KEY_SECONDARY)
 
-    system_prompt = (
-        "You are a query simplifier. "
-        "Your goal is to take a complex or verbose question and produce a concise, clear search query "
-        "that can be used with a standard search engine (like Google) to find relevant results.\n\n"
-        "Instructions:\n"
-        "- Output only the simplified search query, in a few words.\n"
-        "- Do not include extraneous text or explanations.\n"
-        "- Keep it short, but keep important keywords.\n"
-        "If the user question includes multiple lines or answer choices, just extract the core idea."
-    )
+    # Смотрим, есть ли в тексте кириллические символы
+    # (простейшая эвристика, либо можно langdetect использовать)
+    is_russian = re.search(r"[а-яА-ЯёЁ]", original_query)
+
+    # Если распознали русский, просим GPT упрощать на русском
+    if is_russian:
+        system_prompt = (
+            "Ты упрощатель поисковых запросов на русском языке. "
+            "Получая длинный вопрос, оставляй только ключевые слова, "
+            "не переводя на другие языки. "
+            "Выдай итоговый запрос в 3-7 словах на русском языке без лишних пояснений."
+        )
+    else:
+        system_prompt = (
+            "You are a query simplifier. "
+            "Output only a short search query, in English, without extra explanations."
+        )
 
     try:
         response = client.chat.completions.create(
@@ -161,7 +164,10 @@ def simplify_query_with_openai(original_query: str) -> str:
                 {"role": "system", "content": system_prompt},
                 {
                     "role": "user",
-                    "content": f"Original user query:\n{original_query}\n\nReturn a short query suitable for Google."
+                    "content": (
+                        f"Original user query:\n{original_query}\n\n"
+                        "Return a short query suitable for Google."
+                    )
                 }
             ],
             max_tokens=50,
@@ -171,47 +177,49 @@ def simplify_query_with_openai(original_query: str) -> str:
         simplified_query = response.choices[0].message.content.strip()
         logger.info(f"Simplified query: {simplified_query}")
         return simplified_query
-
     except Exception as e:
         logger.error(f"Error simplifying query with secondary key: {str(e)}")
         return original_query
 
 
 def do_web_search(query: str, max_links: int = 3) -> List[str]:
-    """
-    Выполняет запрос к Google Custom Search API.
-    Возвращает список ссылок (не более max_links).
-    """
     logger.info(f"🔍 Searching Google for: {query}")
 
     if not GOOGLE_API_KEY or not GOOGLE_CSE_ID:
-        logger.error(f"❌ Missing Google API credentials! GOOGLE_API_KEY: {GOOGLE_API_KEY}, GOOGLE_CSE_ID: {GOOGLE_CSE_ID}")
+        logger.error("❌ Missing Google API credentials!")
         return []
 
+    # Добавляем параметры для русского языка (если нужно)
     params = {
-        "key": GOOGLE_API_KEY,  # ✅ API-ключ
-        "cx": GOOGLE_CSE_ID,  # ✅ Идентификатор поисковой системы
-        "q": urllib.parse.quote(query),  # ✅ Кодируем запрос
+        "key": GOOGLE_API_KEY,
+        "cx": GOOGLE_CSE_ID,
+        "q": query,
+        # Указываем русский язык, если мы предполагаем, что запрос на русском:
+        "lr": "lang_ru",  # поиск страниц на русском
+        "hl": "ru",       # язык интерфейса
+        "gl": "ru"        # Геолокация - Россия
     }
 
-    url = "https://www.googleapis.com/customsearch/v1"  # ✅ Теперь переменная объявлена перед использованием
+    url = "https://www.googleapis.com/customsearch/v1"
 
-    logger.info(f"🔍 Google API Request: {url}?{params}")  # Логируем финальный запрос
+    logger.info(f"🔍 Google API Request params: {params}")
 
     try:
         resp = requests.get(url, params=params)
         resp.raise_for_status()
         data = resp.json()
-        logger.info(f"✅ Google API Response: {data}")  # Логируем ответ
 
-        links = [item["link"] for item in data.get("items", []) if "link" in item][:max_links]
+        logger.info(f"✅ Google API Response: {data}")
+
+        links = [item["link"] for item in data.get("items", []) if "link" in item]
+        # Ограничиваемся max_links
+        links = links[:max_links]
+
         logger.info(f"✅ Found links: {links}")
-
+        return links
     except requests.exceptions.RequestException as e:
-        logger.error(f"❌ Google API Error: {str(e)} | Response: {resp.text if 'resp' in locals() else 'No response'}")
+        logger.error(f"❌ Google API Error: {str(e)}")
         return []
-
-    return links
 
 
 
